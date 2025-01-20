@@ -15,9 +15,10 @@ spec:
     topology: Layer2
     layer2:
       role: Primary
+      ipam:
+        lifecycle: Persistent
       subnets:
         - 203.203.0.0/16
-      ipamLifecycle: Persistent
 ---
 apiVersion: k8s.ovn.org/v1
 kind: ClusterUserDefinedNetwork
@@ -35,7 +36,8 @@ spec:
     topology: Layer2
     layer2:
       role: Primary
+      ipam:
+        lifecycle: Persistent
       subnets:
         - 208.208.0.0/16
-      ipamLifecycle: Persistent
 
