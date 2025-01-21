@@ -12,6 +12,8 @@ spec:
     metadata:
       name: red
       namespace: red-namespace
+      labels:
+        app.kubernetes.io/name: redvm
     spec:
       domain:
         devices:
