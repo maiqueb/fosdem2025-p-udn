@@ -2,12 +2,14 @@
 apiVersion: v1
 kind: Pod
 metadata:
-  name: pod
-  namespace: test12
+  name: webserver
+  namespace: green
 spec:
   containers:
   - args:
-    - pause
+    - "netexec"
+    - "--http-port"
+    - "9000"
     image: registry.k8s.io/e2e-test-images/agnhost:2.45
     imagePullPolicy: IfNotPresent
     name: agnhost-container
@@ -23,13 +25,13 @@ metadata:
   labels:
     kubevirt.io/vm: vm-a
   name: vm-a
-  namespace: test12
+  namespace: green
 spec:
   runStrategy: Always
   template:
     metadata:
       name: vm-a
-      namespace: test12
+      namespace: green
     spec:
       domain:
         devices:
@@ -69,13 +71,13 @@ metadata:
   labels:
     kubevirt.io/vm: vm-b
   name: vm-b
-  namespace: test12
+  namespace: green
 spec:
   runStrategy: Always
   template:
     metadata:
       name: vm-b
-      namespace: test12
+      namespace: green
     spec:
       domain:
         devices:
