@@ -1,8 +1,8 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: ingress-port-9000-only
-  namespace: test12
+  name: ingress-port-9001-only
+  namespace: green
 spec:
   podSelector: {}
   policyTypes:
@@ -10,5 +10,5 @@ spec:
   ingress:
     - ports:
         - protocol: TCP
-          port: 9000
+          port: 9001
 
