@@ -107,7 +107,7 @@ webserver # reply from the webserver
 
 This shows east/west traffic over a layer2 primary user defined network.
 
-## VM egress
+### VM egress
 Let's assume we're still logged into via console to the `vm-a` in the`green`
 namespace. We will now reach outside the cluster, and show egress works over the
 UDN network.
@@ -151,7 +151,7 @@ rtt min/avg/max/mdev = 6.548/6.849/7.150/0.301 ms
 
 This proves we can egress the cluster over the primary UDN network.
 
-## TCP connections survive live-migration
+### TCP connections survive live-migration
 For this demo, we will create an iperf session between our two VMs, then migrate
 the server. If the TCP connection breaks, the client will be reset. Worry not!
 That won't happen.
@@ -275,7 +275,7 @@ Let's now move over to the second part of the demo: provisioning a new namespace
 and ensuring that the workloads on the `blue` namespace **cannot** access in any
 way the workloads in the `green` namespace.
 
-## Isolated namespaces
+### Isolated namespaces
 For this second part of the isolated namespaces demo, we need to provision two
 additional manifests:
 - [blue namespace config](manifests/ns-isolation/03-namespace-isolation-another-ns-l2-persistent.yaml)
@@ -299,7 +299,7 @@ PING 203.203.0.6 (203.203.0.6) 56(84) bytes of data.
 To finalize the demo on the native namespace isolation section, let's show how
 primary UDN integrates natively with Kubernetes `NetworkPolicy`.
 
-## Native NetworkPolicy integration
+### Native NetworkPolicy integration
 For this, we will focus again on the workloads deployed in the `green`
 namespace. Let's log into `vm-a` once more, and reach into the webserver pod:
 ```
@@ -356,4 +356,231 @@ Successfully connected to vm-a console. The escape sequence is ^]
 [fedora@vm-a ~]$ curl 203.203.0.8:9001/hostname
 new-webserver
 ```
+
+## Cluster wide network
+In the diagram below, you will find the graphical depiction of the use case we
+are trying to achieve:
+![Cluster-wide Network](assets/cluster-wide-network.png)
+
+In it, we can see two cluster-wide networks - `happy`, and `sad` network.
+Traffic will be limited within each network - i.e. the workloads deployed in the
+namespaces interconnected by the `happy` network by the `happy` network (`red`
+and `blue`) will be able to communicate. Likewise for the namespaces
+interconnected by the `sad` network: `green` and `yellow`.
+
+What is not possible, is for a workload in the `red` namespace to communicate
+with a workload on the `green` namespace, since they are connected to different
+networks. And all of this, without having to provision a single NetworkPolicy.
+
+For this demo, we will focus exclusively on one of the namespace, the `happy`
+one,and we'll show something different - but all the features we've seen so far
+are be covered for this API as well.
+
+We will create a single cluster wide network, connecting two namespaces - the
+network will be called `happy`, and it will interconnect the `red` and `blue`
+namespaces.
+
+For that, provisioning the following yamls:
+- [namespaces and cluster-wide UDN](manifests/cluster-wide-network/01-udn.yaml)
+- [workloads](manifests/cluster-wide-network/02-workloads.yaml)
+
+This will also create 2 VMs, one in each namespace.
+
+We will now see they are both connected:
+```
+# let's get the VMs IPs
+kubectl get vmi -A -owide
+NAMESPACE        NAME   AGE   PHASE     IP            NODENAME      READY
+blue-namespace   blue   14m   Running   203.203.0.4   ovn-worker2   True
+red-namespace    red    14m   Running   203.203.0.3   ovn-worker    True
+
+# password is fedora/fedora
+virtctl console -nblue-namespace blue
+Fedora Linux 35 (Cloud Edition)
+Kernel 5.14.10-300.fc35.x86_64 on an x86_64 (ttyS0)
+
+eth0: 203.203.0.4 fe80::858:cbff:fecb:4
+blue login: fedora
+Password:
+
+[fedora@blue ~]$ ping -c 4 203.203.0.3
+PING 203.203.0.3 (203.203.0.3) 56(84) bytes of data.
+64 bytes from 203.203.0.3: icmp_seq=1 ttl=64 time=2.74 ms
+64 bytes from 203.203.0.3: icmp_seq=2 ttl=64 time=2.60 ms
+64 bytes from 203.203.0.3: icmp_seq=3 ttl=64 time=0.729 ms
+64 bytes from 203.203.0.3: icmp_seq=4 ttl=64 time=0.778 ms
+
+--- 203.203.0.3 ping statistics ---
+4 packets transmitted, 4 received, 0% packet loss, time 3004ms
+rtt min/avg/max/mdev = 0.729/1.709/2.735/0.957 ms
+```
+
+Cool, as expected. 
+
+### Integration with native Service API
+Let's show one final thing: the integration with the Kubernetes `Service` API.
+You can find its depiction in the image below:
+![LoadBalancer service](assets/lb-service.png)
+
+We will create one `LoadBalancer` service to expose the webserver we will create
+in the `red` VM to outside the cluster. Inside the cluster, other interested
+workloads can use the service's cluster-ip to access it.
+For that, we must provision
+[one final manifest](manifests/cluster-wide-network/03-service.yaml).
+
+Once it is provisioned, we can check what IPs we were assigned:
+```
+kubectl get service -nred-namespace webapp -oyaml
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","kind":"Service","metadata":{"annotations":{},"name":"webapp","namespace":"red-namespace"},"spec":{"ports":[{"port":9000,"protocol":"TCP","targetPort":9000}],"selector":{"app.kubernetes.io/name":"redvm"},"type":"LoadBalancer"}}
+    metallb.universe.tf/ip-allocated-from-pool: dev-env-bgp
+  creationTimestamp: "2025-01-22T17:19:22Z"
+  name: webapp
+  namespace: red-namespace
+  resourceVersion: "588976"
+  uid: 9d8a723f-bd79-48e5-95e7-3e235c023314
+spec:
+  allocateLoadBalancerNodePorts: true
+  clusterIP: 10.96.6.65
+  clusterIPs:
+  - 10.96.6.65
+  externalTrafficPolicy: Cluster
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - nodePort: 30600
+    port: 9000
+    protocol: TCP
+    targetPort: 9000
+  selector:
+    app.kubernetes.io/name: redvm
+  sessionAffinity: None
+  type: LoadBalancer
+status:
+  loadBalancer:
+    ingress:
+    - ip: 192.168.10.0
+      ipMode: VIP
+
+# lets ensure we have endpoints ...
+kubectl get endpoints -nred-namespace
+NAME     ENDPOINTS          AGE
+webapp   10.244.1.17:9000   16m
+```
+
+Now we must start a webserver in the `red` VM; using the console to log into
+it and running a python3 based webserver is straight-forward:
+```
+# the password is once again fedora/fedora
+virtctl console -nred-namespace red             
+Successfully connected to red console. The escape sequence is ^]
+red login: fedora
+Password: 
+[fedora@red ~]$ python3 -m http.server --bind 203.203.0.3 9000
+Serving HTTP on 203.203.0.3 port 9000 (http://203.203.0.3:9000/) ...
+```
+
+Let's ensure we can access the service using the cluster-ip:
+```
+[fedora@blue ~]$ curl 10.96.6.65:9000
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Directory listing for /</title>
+</head>
+<body>
+<h1>Directory listing for /</h1>
+<hr>
+<ul>
+<li><a href=".bash_logout">.bash_logout</a></li>
+<li><a href=".bash_profile">.bash_profile</a></li>
+<li><a href=".bashrc">.bashrc</a></li>
+<li><a href=".ssh/">.ssh/</a></li>
+</ul>
+<hr>
+</body>
+</html>
+```
+
+Let's also check with the node-port, from the Hypervisor where the docker
+containers run:
+```
+[root@hades01 fosdem2025-p-udn]# kubectl get nodes -owide
+NAME                STATUS   ROLES           AGE    VERSION   INTERNAL-IP   EXTERNAL-IP   OS-IMAGE                         KERNEL-VERSION
+  CONTAINER-RUNTIME
+ovn-control-plane   Ready    control-plane   2d1h   v1.31.1   172.18.0.4    <none>        Debian GNU/Linux 12 (bookworm)   6.6.13-100.fc38.x86_64 containerd://1.7.18
+ovn-worker          Ready    worker          2d1h   v1.31.1   172.18.0.2    <none>        Debian GNU/Linux 12 (bookworm)   6.6.13-100.fc38.x86_64 containerd://1.7.18
+ovn-worker2         Ready    worker          2d1h   v1.31.1   172.18.0.3    <none>        Debian GNU/Linux 12 (bookworm)   6.6.13-100.fc38.x86_64 containerd://1.7.18
+
+curl 172.18.0.2:30600
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Directory listing for /</title>
+</head>
+<body>
+<h1>Directory listing for /</h1>
+<hr>
+<ul>
+<li><a href=".bash_logout">.bash_logout</a></li>
+<li><a href=".bash_profile">.bash_profile</a></li>
+<li><a href=".bashrc">.bashrc</a></li>
+<li><a href=".ssh/">.ssh/</a></li>
+</ul>
+<hr>
+</body>
+</html>
+```
+
+Finally, let's check the load-balancer service from the FRR container:
+```
+docker ps
+docker ps
+CONTAINER ID   IMAGE                                           COMMAND                  CREATED      STATUS      PORTS                       NAMES
+98e98c24334e   quay.io/itssurya/dev-images:metallb-lbservice   "sleep infinity"         2 days ago   Up 2 days                               lbclient
+3b87a1195f33   quay.io/frrouting/frr:9.1.0                     "/sbin/tini -- /usr/…"   2 days ago   Up 2 days                               frr
+1ea8f177896b   kindest/node:v1.31.1                            "/usr/local/bin/entr…"   2 days ago   Up 2 days                               ovn-worker
+804c34cd2a95   kindest/node:v1.31.1                            "/usr/local/bin/entr…"   2 days ago   Up 2 days                               ovn-worker2
+9e3b1eaf614c   kindest/node:v1.31.1                            "/usr/local/bin/entr…"   2 days ago   Up 2 days   127.0.0.1:36179->6443/tcp   ovn-control-plane
+
+nsenter -t $(container-pid frr) -n curl 192.168.10.0:9000
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>Directory listing for /</title>
+</head>
+<body>
+<h1>Directory listing for /</h1>
+<hr>
+<ul>
+<li><a href=".bash_logout">.bash_logout</a></li>
+<li><a href=".bash_profile">.bash_profile</a></li>
+<li><a href=".bashrc">.bashrc</a></li>
+<li><a href=".ssh/">.ssh/</a></li>
+</ul>
+<hr>
+</body>
+</html>
+```
+
+This concludes our demo !
+
+## Conclusions
+We have shown how to configure OVN-Kubernetes to provide two full fledged use
+cases:
+- namespace isolation
+- cluster-wide network, interconnecting namespaces
+
+We have seen seamless live-migration for a VM across different cluster nodes,
+and also saw how the primary UDN feature integrates natively with both
+Kubernetes `NetworkPolicy` and `Service` API.
 

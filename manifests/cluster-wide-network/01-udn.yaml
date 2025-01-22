@@ -13,20 +13,6 @@ metadata:
   labels:
     k8s.ovn.org/primary-user-defined-network: ""
 ---
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: green-namespace
-  labels:
-    k8s.ovn.org/primary-user-defined-network: ""
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: yellow-namespace
-  labels:
-    k8s.ovn.org/primary-user-defined-network: ""
----
 apiVersion: k8s.ovn.org/v1
 kind: ClusterUserDefinedNetwork
 metadata:
@@ -47,25 +33,4 @@ spec:
         lifecycle: Persistent
       subnets:
         - 203.203.0.0/16
----
-apiVersion: k8s.ovn.org/v1
-kind: ClusterUserDefinedNetwork
-metadata:
-  name: sad-tenant
-spec:
-  namespaceSelector:
-    matchExpressions:
-    - key: kubernetes.io/metadata.name
-      operator: In
-      values:
-        - green-namespace
-        - yellow-namespace
-  network:
-    topology: Layer2
-    layer2:
-      role: Primary
-      ipam:
-        lifecycle: Persistent
-      subnets:
-        - 208.208.0.0/16
 
