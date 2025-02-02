@@ -5,13 +5,13 @@ metadata:
   labels:
     kubevirt.io/vm: vm-a
   name: vm-a
-  namespace: another-namespace
+  namespace: blue
 spec:
   runStrategy: Always
   template:
     metadata:
       name: vm-a
-      namespace: another-namespace
+      namespace: blue
     spec:
       domain:
         devices:
